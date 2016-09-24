@@ -1,27 +1,26 @@
 .replaceProperty <- function (shades, replacement, space, dim)
 {
-    shades <- shade(shades)
-    cols <- as(shades, space)
+    shades <- warp(shades, space)
     
     if (is.null(replacement))
-        structure(coords(cols)[,dim], names=NULL)
+        structure(coords(shades)[,dim], names=NULL)
     else
     {
         if (is.numeric(replacement))
         {
             indices <- rep(seq_along(shades), each=length(replacement))
-            cols@coords <- cols@coords[indices,,drop=FALSE]
-            cols@coords[,dim] <- rep(replacement, length(shades))
+            coords <- coords(shades)[indices,,drop=FALSE]
+            coords[,dim] <- rep(replacement, length(shades))
         }
         else
         {
             replacement <- match.fun(replacement)
-            temp <- replacement(cols@coords[1,dim])
+            temp <- replacement(coords(shades)[1,dim])
             indices <- rep(seq_along(shades), each=length(temp))
-            cols@coords <- cols@coords[indices,,drop=FALSE]
-            cols@coords[,dim] <- replacement(cols@coords[,dim])
+            coords <- coords(shades)[indices,,drop=FALSE]
+            coords[,dim] <- replacement(coords[,dim])
         }
-        shade(cols)
+        shade(coords, space=space)
     }
 }
 
@@ -31,7 +30,6 @@
 #' will convert between colour spaces as required, but the RGB representation
 #' will be appropriately updated in the result.
 #' 
-#' 
 #' @param shades One or more colours, in any suitable form (see
 #'   \code{\link{shade}}).
 #' @param values New values for the property in question. If \code{NULL}, the
@@ -39,7 +37,7 @@
 #' @param angles For \code{hueshift}, the angles (in degrees) by which to
 #'   rotate the colour hues.
 #' @return Current colour property values, or new colours of class
-#'   \code{\link{shade}}.
+#'   \code{"shade"}.
 #' 
 #' @examples
 #' saturation(c("papayawhip","lavenderblush","olivedrab"))
