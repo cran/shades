@@ -2,18 +2,84 @@
 #' @importFrom graphics par rect plot
 NULL
 
-.lowerCaseToR <- list(rgb="sRGB", srgb="sRGB", hsv="sRGB", xyz="XYZ", "apple rgb"="Apple RGB", "cie rgb"="CIE RGB", lab="Lab", luv="Luv")
+# Linearised transformation matrices
+.bradfordXYZtoLMS <- matrix(c(0.8951, -0.7502, 0.0389, 0.2664, 1.7135, -0.0685, -0.1614, 0.0367, 1.0296), 3, 3)
+.bradfordLMStoXYZ <- solve(.bradfordXYZtoLMS)
+
+# Standard and additional colour space converters
+.converters <- list(rgb="sRGB", srgb="sRGB", xyz="XYZ", "apple rgb"="Apple RGB", "cie rgb"="CIE RGB", lab="Lab", luv="Luv")
+
+.converters$hsv <- colorConverter(
+    toXYZ = function (hsv, ...) {
+        rgb <- drop(col2rgb(hsv((hsv[1] %% 360)/360, hsv[2], hsv[3])) / 255)
+        colorspaces$sRGB$toXYZ(rgb, ...)
+    },
+    fromXYZ = function (xyz, ...) {
+        # This rounding operation mirrors convertColor(), and avoids numerical variability between platforms
+        rgb <- round(colorspaces$sRGB$fromXYZ(xyz, ...), 5)
+        rgb[rgb < 0] <- 0
+        rgb[rgb > 1] <- 1
+        hsv <- drop(rgb2hsv(t(rgb), maxColorValue=1))
+        hsv[1] <- (hsv[1] * 360) %% 360
+        structure(hsv, names=c("H","S","V"))
+    },
+    name = "HSV")
+
+.converters$lms <- colorConverter(
+    toXYZ = function (lms, ...) { .bradfordLMStoXYZ %*% lms },
+    fromXYZ = function (xyz, ...) { structure(.bradfordXYZtoLMS %*% xyz, names=c("L","M","S")) },
+    name = "LMS")
+
+.converters$lch <- colorConverter(
+    toXYZ = function (lch, ...) {
+        angle <- lch[3] / 180 * pi
+        lab <- c(lch[1], lch[2] * cos(angle), lch[2] * sin(angle))
+        colorspaces$Lab$toXYZ(lab, ...)
+    },
+    fromXYZ = function (xyz, ...) {
+        lab <- colorspaces$Lab$fromXYZ(xyz, ...)
+        lch <- c(lab[1], sqrt(lab[2]^2 + lab[3]^2), atan2(lab[3],lab[2]) / pi * 180)
+        lch[3] <- lch[3] %% 360
+        structure(lch, names=c("L","C","h"))
+    },
+    name = "LCh")
 
 .toHex <- function (coords, space)
 {
     space <- tolower(space)
     
-    if (space == "hsv")
-        coords <- t(col2rgb(hsv((coords[,1] %% 360)/360, coords[,2], coords[,3])) / 255)
-    else if (.lowerCaseToR[[space]] != "sRGB")
-        coords <- convertColor(coords, .lowerCaseToR[[space]], "sRGB")
+    if (!identical(.converters[[space]], "sRGB"))
+        coords <- convertColor(coords, .converters[[space]], "sRGB")
     
     return (rgb(coords[,1], coords[,2], coords[,3], maxColorValue=1))
+}
+
+.clip <- function (coords, space)
+{
+    if (grepl("rgb$", tolower(space)))
+    {
+        coords[coords < 0] <- 0
+        coords[coords > 1] <- 1
+    }
+    else if (tolower(space) == "hsv")
+    {
+        temp <- coords[,1] %% 360
+        coords[coords < 0] <- 0
+        coords[coords > 1] <- 1
+        coords[,1] <- temp
+    }
+    
+    return (coords)
+}
+
+.dims <- function (x, collapse = FALSE)
+{
+    if (is.null(dim(x)))
+        return (length(x))
+    else if (length(dim(x)) > 2 && collapse)
+        return (c(dim(x)[1], prod(dim(x)[-1])))
+    else
+        return (dim(x))
 }
 
 #' The shade class
@@ -138,6 +204,14 @@ rep.shade <- function (x, ...)
 
 #' @rdname shade
 #' @export
+rev.shade <- function (x)
+{
+    indices <- rev(seq_along(x))
+    structure(as.character(x)[indices], space=attr(x,"space"), coords=attr(x,"coords")[indices,,drop=FALSE], class="shade")
+}
+
+#' @rdname shade
+#' @export
 "==.shade" <- function (x, y)
 {
     y <- rep(warp(y,attr(x,"space")), length.out=length(x))
@@ -161,12 +235,17 @@ all.equal.shade <- function (target, current, hexonly = FALSE, ...)
         all.equal(as.character(target), as.character(current), ...)
     else if (length(target) != length(current))
         paste0("Lengths do not match (", length(target), " and ", length(current), ")")
-    else if (all(target == current))
-        TRUE
     else
     {
-        distances <- sapply(seq_along(target), function(i) distance(target[i],current[i]))
-        paste0("Mean colour distance is ", signif(mean(distances,4)))
+        target <- warp(target, space(current))
+        result <- all.equal(coords(target), coords(current), ...)
+        if (isTRUE(result))
+            return (TRUE)
+        else
+        {
+            distances <- sapply(seq_along(target), function(i) distance(target[i],current[i]))
+            paste0("Mean colour distance is ", signif(mean(distances,4)))
+        }
     }
 }
 
@@ -239,14 +318,25 @@ coords.default <- function (x, ...)
 #' Valid names for spaces are currently those supported by the
 #' \code{\link{convertColor}} function, namely ``sRGB'', ``Apple RGB'', ``CIE
 #' RGB'', ``XYZ'', ``Lab'' and ``Luv''; plus ``RGB'' (which is treated as an
-#' alias for ``sRGB'') and ``HSV''. Case is not significant.
+#' alias for ``sRGB''), ``HSV'', ``LCh'' and ``LMS''. Case is not significant.
 #' 
 #' @param x An R object which can be coerced to class \code{"shade"}.
 #' @param space A string naming the new space.
 #' @return A new object of class \code{"shade"}.
 #' 
+#' @note LMS space, used for chromatic adaptation and simulating colour
+#'   blindness, is not uniquely defined. Here we use the (linearised) Bradford
+#'   transform, obtained by Lam (1985) and used widely in ICC colour profiles
+#'   and elsewhere, to transform to and from CIE XYZ space.
+#'   
+#'   R uses the D65 standard illuminant as the reference white for the ``Lab''
+#'   and ``Luv'' spaces.
+#' 
 #' @examples
 #' warp("red", "HSV")
+#' @references
+#' Lam, K.M. (1985). Metamerism and colour constancy. PhD thesis, University of
+#' Bradford.
 #' @seealso \code{\link{convertColor}}
 #' @author Jon Clayden <code@@clayden.org>
 #' @export
@@ -259,18 +349,7 @@ warp <- function (x, space)
     if (sourceSpace == targetSpace)
         return (x)
     
-    coords <- attr(x, "coords")
+    coords <- convertColor(attr(x,"coords"), .converters[[sourceSpace]], .converters[[targetSpace]])
     
-    if (sourceSpace == "hsv")
-        coords <- t(col2rgb(hsv((coords[,1] %% 360)/360, coords[,2], coords[,3])) / 255)
-    
-    coords <- convertColor(coords, .lowerCaseToR[[sourceSpace]], .lowerCaseToR[[targetSpace]])
-    
-    if (targetSpace == "hsv")
-    {
-        coords <- t(rgb2hsv(t(coords), maxColorValue=1))
-        coords[,1] <- coords[,1] * 360
-    }
-    
-    return (structure(.toHex(coords,targetSpace), space=space, coords=coords, class="shade"))
+    return (structure(.toHex(coords,targetSpace), dim=dim(x), space=space, coords=coords, class="shade"))
 }

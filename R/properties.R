@@ -6,11 +6,15 @@
         structure(coords(shades)[,dim], names=NULL)
     else
     {
+        shape <- .dims(shades)
+        
         if (is.numeric(replacement))
         {
             indices <- rep(seq_along(shades), each=length(replacement))
             coords <- coords(shades)[indices,,drop=FALSE]
             coords[,dim] <- rep(replacement, length(shades))
+            coords <- .clip(coords, space)
+            drop(structure(shade(coords,space=space), dim=c(length(replacement),shape)))
         }
         else
         {
@@ -19,8 +23,9 @@
             indices <- rep(seq_along(shades), each=length(temp))
             coords <- coords(shades)[indices,,drop=FALSE]
             coords[,dim] <- replacement(coords[,dim])
+            coords <- .clip(coords, space)
+            drop(structure(shade(coords,space=space), dim=c(length(temp),shape)))
         }
-        shade(coords, space=space)
     }
 }
 
@@ -30,18 +35,27 @@
 #' will convert between colour spaces as required, but the RGB representation
 #' will be appropriately updated in the result.
 #' 
+#' Brightness and lightness differ technically, in the sense that one is
+#' absolute and the other is relative. Intuitively, a grey square on white
+#' paper is brighter under bright sunlight than in a dark room, but its
+#' lightness (relative to the white around it) is constant between conditions.
+#' In these functions, brightness is ``value'' in HSV space and is between 0
+#' and 1, while lightness is defined in Lab space and is between 0 and 100.
+#' Saturation and chroma are also related. Hue is defined in HSV space, with
+#' red at 0º (and 360º), which is generally the most familiar parameterisation.
+#' 
 #' @param shades One or more colours, in any suitable form (see
 #'   \code{\link{shade}}).
 #' @param values New values for the property in question. If \code{NULL}, the
-#'   current value(s) will be returned.
-#' @param angles For \code{hueshift}, the angles (in degrees) by which to
-#'   rotate the colour hues.
+#'   current value(s) will be returned. May also be a function computing new
+#'   values from old ones, notably \code{delta}, which adds its argument.
 #' @return Current colour property values, or new colours of class
 #'   \code{"shade"}.
 #' 
 #' @examples
 #' saturation(c("papayawhip","lavenderblush","olivedrab"))
 #' saturation("papayawhip", 0.7)
+#' saturation("papayawhip", delta(0.2))
 #' @author Jon Clayden <code@@clayden.org>
 #' @rdname properties
 #' @export
@@ -59,7 +73,28 @@ brightness <- function (shades, values = NULL)
 
 #' @rdname properties
 #' @export
-hueshift <- function (shades, angles = 0)
+lightness <- function (shades, values = NULL)
 {
-    .replaceProperty(shades, function(x) (x+angles) %% 360, "HSV", 1)
+    .replaceProperty(shades, values, "Lab", 1)
+}
+
+#' @rdname properties
+#' @export
+chroma <- function (shades, values = NULL)
+{
+    .replaceProperty(shades, values, "LCh", 2)
+}
+
+#' @rdname properties
+#' @export
+hue <- function (shades, values = NULL)
+{
+    .replaceProperty(shades, values, "HSV", 1)
+}
+
+#' @rdname properties
+#' @export
+delta <- function (values)
+{
+    return (function(x) x+values)
 }

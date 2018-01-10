@@ -16,9 +16,13 @@ swatch(x, bg = "white", ...)
 }
 \description{
 This function provides a simple visualisation of a colour series as a series
-of boxes against the specified background colour.
+of boxes against the specified background colour. If the input has more than
+one dimension then the boxes will be arranged in a grid (flattening further
+dimensions after the second).
+}
+\examples{
+swatch(c("red", "green", "blue"))
 }
 \author{
 Jon Clayden <code@clayden.org>
 }
-
