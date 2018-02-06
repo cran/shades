@@ -4,9 +4,9 @@
 
 # Simple colour manipulation in R 😎
 
-The `shades` package allows colours to be manipulated easily in R. Properties such as brightness and saturation can be quickly queried, changed or varied, and perceptually uniform colour gradients can be constructed. It plays nicely with the pipe operator from the [popular `magrittr` package](https://github.com/smbache/magrittr), and fit naturally into that paradigm.
+The `shades` package allows colours to be manipulated easily in R. Properties such as brightness and saturation can be quickly queried, changed or varied, and perceptually uniform colour gradients can be constructed. It plays nicely with the pipe operator from the [popular `magrittr` package](https://github.com/tidyverse/magrittr), and fits naturally into that paradigm.
 
-The package is available on [CRAN](https://cran.r-project.org/package=shades), but it is still quite early in its development, so you may prefer to obtain an up-to-date version from GitHub using [`devtools`](https://github.com/hadley/devtools):
+The package is available on [CRAN](https://cran.r-project.org/package=shades). You can also install the current development version from GitHub using [`devtools`](https://github.com/hadley/devtools):
 
 
 ```r
@@ -60,7 +60,7 @@ swatch(gradient(c("red","blue"), 5, space="Lab"))
 
 Here, we are using the `swatch` function to visualise a set of colours as a series of squares. Notice the more uniform appearance of the gradient when it traverses through the [Lab colour space](https://en.wikipedia.org/wiki/Lab_color_space).
 
-Similarly, we can create a set of new colours by changing the brightness and saturation levels of some base colours, and make the code more readable by using the [`magrittr` pipe operator](https://github.com/smbache/magrittr).
+Similarly, we can create a set of new colours by changing the brightness and saturation levels of some base colours, and make the code more readable by using the [`magrittr` pipe operator](https://github.com/tidyverse/magrittr).
 
 
 ```r
@@ -124,3 +124,35 @@ Finally, you can calculate perceptual distances to a reference colour, as in
 distance(c("red","green","blue"), "red")
 ## [1]  0.00000 86.52385 53.07649
 ```
+
+### Minimal ggplot2 example
+
+Gradients from this package can be used as `ggplot2` colour scales through the manual scale functions; for example,
+
+
+```r
+library(shades); library(ggplot2)
+mtcars$cyl<- factor(mtcars$cyl)
+ggplot(mtcars, aes(mpg,qsec,col=cyl)) + geom_point() + scale_color_manual(values=gradient("viridis",3))
+```
+
+![plot of chunk ggplot](tools/figures/ggplot-1.png)
+
+```r
+ggplot(mtcars, aes(cyl,mpg,fill=cyl)) + geom_boxplot() + scale_fill_manual(values=gradient("viridis",3))
+```
+
+![plot of chunk ggplot](tools/figures/ggplot-2.png)
+
+## Related packages
+
+The `shades` package aims to bring together a range of colour manipulation tools and make them easy to use. However, there are several other packages available that can do similar things, sometimes in slightly different ways. These include
+
+- the `grDevices` package, which is shipped with R and used as the basis for `shades`;
+- the venerable [`colorspace` package](https://cran.r-project.org/package=colorspace), which provides formal colour classes and transformations between spaces;
+- [`munsell`](https://cran.r-project.org/package=munsell), which interprets colours in Munsell notation and does some colour manipulation;
+- [`viridis`](https://cran.r-project.org/package=viridis) and [`RColorBrewer`](https://cran.r-project.org/package=RColorBrewer), which provide the colour scales from `matplotlib` and ColorBrewer;
+- [`dichromat`](https://cran.r-project.org/package=dichromat), which provides another implementation of the `dichromat` function (a duplication which I didn't discover until after writing this package's version!); and
+- [`colorblindr`](https://github.com/clauswilke/colorblindr), which provides alternative tools for simulating colour blindness in figures.
+
+This package was also partly influenced by [Colors.jl](https://github.com/JuliaGraphics/Colors.jl), a colour manipulation package for Julia.

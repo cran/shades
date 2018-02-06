@@ -1,6 +1,6 @@
 Package: shades
-Version: 1.0.0
-Date: 2018-01-10
+Version: 1.1.0
+Date: 2018-02-06
 Title: Simple Colour Manipulation
 Author: Jon Clayden
 Maintainer: Jon Clayden <code@clayden.org>
@@ -13,6 +13,6 @@ URL: https://github.com/jonclayden/shades
 BugReports: https://github.com/jonclayden/shades/issues
 RoxygenNote: 6.0.1
 NeedsCompilation: no
-Packaged: 2018-01-10 11:32:20 UTC; jon
+Packaged: 2018-02-06 16:35:33 UTC; jon
 Repository: CRAN
-Date/Publication: 2018-01-10 11:51:12 UTC
+Date/Publication: 2018-02-06 17:29:49 UTC

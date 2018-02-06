@@ -1,7 +1,3 @@
-#' @import grDevices
-#' @importFrom graphics par rect plot
-NULL
-
 # Linearised transformation matrices
 .bradfordXYZtoLMS <- matrix(c(0.8951, -0.7502, 0.0389, 0.2664, 1.7135, -0.0685, -0.1614, 0.0367, 1.0296), 3, 3)
 .bradfordLMStoXYZ <- solve(.bradfordXYZtoLMS)
@@ -149,6 +145,8 @@ shade.matrix <- function (x, space = "sRGB", ...)
 #' @export
 shade.character <- function (x, ...)
 {
+    if (length(x) == 0)
+        stop("Colour vector must not be empty")
     coords <- structure(t(col2rgb(x)/255), dimnames=list(NULL,c("R","G","B")))
     structure(x, space="sRGB", coords=coords, class="shade")
 }
@@ -157,7 +155,18 @@ shade.character <- function (x, ...)
 #' @export
 shade.default <- function (x, ...)
 {
+    if (missing(x))
+        stop("Colour vector must not be empty")
     shade.character(as.character(x), ...)
+}
+
+#' @rdname shade
+#' @export
+print.shade <- function (x, ...)
+{
+    len <- length(x)
+    cat(paste("", len, ifelse(len==1,"shade","shades"), "in", space(x), "space\n"))
+    print(structure(x, space=NULL, coords=NULL, class=NULL), quote=FALSE)
 }
 
 #' @rdname shade
