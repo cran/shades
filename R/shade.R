@@ -40,14 +40,17 @@
     },
     name = "LCh")
 
-.toHex <- function (coords, space)
+.toHex <- function (coords, space, alpha = NULL)
 {
     space <- tolower(space)
     
     if (!identical(.converters[[space]], "sRGB"))
         coords <- convertColor(coords, .converters[[space]], "sRGB")
     
-    return (rgb(coords[,1], coords[,2], coords[,3], maxColorValue=1))
+    if (is.null(alpha) || all(alpha == 1))
+        return (rgb(coords[,1], coords[,2], coords[,3], maxColorValue=1))
+    else
+        return (rgb(coords[,1], coords[,2], coords[,3], pmax(0,pmin(1,alpha)), maxColorValue=1))
 }
 
 .clip <- function (coords, space)
@@ -78,6 +81,29 @@
         return (dim(x))
 }
 
+.alpha <- function (x, ..., allowNull = TRUE)
+{
+    if (!missing(..1))
+    {
+        elements <- lapply(list(x,...), .alpha, allowNull=FALSE)
+        result <- do.call("c", elements)
+    }
+    else
+    {
+        if (!is.null(attr(x, "alpha")))
+            result <- pmax(0, pmin(1, attr(x,"alpha")))
+        else if (any(grepl("#[0-9A-Fa-f]{8}", as.character(x), perl=TRUE)))
+            result <- unname(col2rgb(as.character(x), alpha=TRUE)["alpha",] / 255)
+        else
+            result <- rep(1, length(x))
+    }
+    
+    if (allowNull && all(result == 1))
+        return (NULL)
+    else
+        return (result)
+}
+
 #' The shade class
 #' 
 #' Objects of class \code{"shade"} are simply standard R character vectors
@@ -91,6 +117,8 @@
 #' @param x,y R objects, or \code{"shade"} objects for methods.
 #' @param space For a matrix, the space in which coordinates are being
 #'   provided.
+#' @param alpha For a matrix, an associated vector of opacity values between 0
+#'   and 1, if required.
 #' @param target,current Shade vectors to compare.
 #' @param i An index vector.
 #' @param value A vector of replacement colours.
@@ -131,14 +159,16 @@ shade.shade <- function (x, ...)
 #' @export
 shade.color <- function (x, ...)
 {
-    structure(colorspace::hex(x,fixup=TRUE), space=class(x), coords=colorspace::coords(x), class="shade")
+    hex <- colorspace::hex(x, fixup=TRUE)
+    structure(hex, space=class(x), coords=colorspace::coords(x), alpha=.alpha(hex), class="shade")
 }
 
 #' @rdname shade
 #' @export
-shade.matrix <- function (x, space = "sRGB", ...)
+shade.matrix <- function (x, space = "sRGB", alpha = NULL, ...)
 {
-    structure(.toHex(x,space), space=space, coords=x, class="shade")
+    hex <- .toHex(x, space, alpha)
+    structure(hex, space=space, coords=x, alpha=.alpha(hex), class="shade")
 }
 
 #' @rdname shade
@@ -148,7 +178,7 @@ shade.character <- function (x, ...)
     if (length(x) == 0)
         stop("Colour vector must not be empty")
     coords <- structure(t(col2rgb(x)/255), dimnames=list(NULL,c("R","G","B")))
-    structure(x, space="sRGB", coords=coords, class="shade")
+    structure(x, space="sRGB", coords=coords, alpha=.alpha(x), class="shade")
 }
 
 #' @rdname shade
@@ -165,15 +195,16 @@ shade.default <- function (x, ...)
 print.shade <- function (x, ...)
 {
     len <- length(x)
-    cat(paste("", len, ifelse(len==1,"shade","shades"), "in", space(x), "space\n"))
-    print(structure(x, space=NULL, coords=NULL, class=NULL), quote=FALSE)
+    hasAlpha <- !is.null(attr(x, "alpha"))
+    cat(paste0(" ", len, ifelse(len==1," shade"," shades"), " in ", space(x), " space, ", ifelse(hasAlpha,"with","without"), " transparency\n"))
+    print(structure(x, space=NULL, coords=NULL, alpha=NULL, class=NULL), quote=FALSE)
 }
 
 #' @rdname shade
 #' @export
 "[.shade" <- function (x, i)
 {
-    structure(as.character(x)[i], space=attr(x,"space"), coords=attr(x,"coords")[i,,drop=FALSE], class="shade")
+    structure(as.character(x)[i], space=attr(x,"space"), coords=attr(x,"coords")[i,,drop=FALSE], alpha=attr(x,"alpha")[i], class="shade")
 }
 
 #' @rdname shade
@@ -182,6 +213,14 @@ print.shade <- function (x, ...)
 {
     replacement <- warp(value, attr(x,"space"))
     attr(x,"coords")[i,] <- attr(replacement,"coords")
+    
+    alpha <- .alpha(x, allowNull=FALSE)
+    alpha[i] <- .alpha(value, allowNull=FALSE)
+    if (all(alpha == 1))
+        attr(x, "alpha") <- NULL
+    else
+        attr(x, "alpha") <- alpha
+    
     NextMethod("[<-")
 }
 
@@ -200,7 +239,7 @@ c.shade <- function (...)
         shades <- lapply(shades, warp, "XYZ")
     }
     
-    structure(do.call("c",lapply(shades,as.character)), space=space, coords=do.call("rbind",lapply(shades,coords)), class="shade")
+    structure(do.call("c",lapply(shades,as.character)), space=space, coords=do.call("rbind",lapply(shades,coords)), alpha=do.call(".alpha",shades), class="shade")
 }
 
 #' @rdname shade
@@ -208,7 +247,7 @@ c.shade <- function (...)
 rep.shade <- function (x, ...)
 {
     indices <- rep(seq_along(x), ...)
-    structure(as.character(x)[indices], space=attr(x,"space"), coords=attr(x,"coords")[indices,,drop=FALSE], class="shade")
+    structure(as.character(x)[indices], space=attr(x,"space"), coords=attr(x,"coords")[indices,,drop=FALSE], alpha=attr(x,"alpha")[indices], class="shade")
 }
 
 #' @rdname shade
@@ -216,7 +255,7 @@ rep.shade <- function (x, ...)
 rev.shade <- function (x)
 {
     indices <- rev(seq_along(x))
-    structure(as.character(x)[indices], space=attr(x,"space"), coords=attr(x,"coords")[indices,,drop=FALSE], class="shade")
+    structure(as.character(x)[indices], space=attr(x,"space"), coords=attr(x,"coords")[indices,,drop=FALSE], alpha=attr(x,"alpha")[indices], class="shade")
 }
 
 #' @rdname shade
@@ -226,7 +265,9 @@ rev.shade <- function (x)
     y <- rep(warp(y,attr(x,"space")), length.out=length(x))
     xCoords <- coords(x)
     yCoords <- coords(y)
-    sapply(seq_along(x), function(i) all(xCoords[i,] == yCoords[i,]))
+    coordsAgree <- sapply(seq_along(x), function(i) all(xCoords[i,] == yCoords[i,]))
+    alphaAgrees <- .alpha(x, allowNull=FALSE) == .alpha(y, allowNull=FALSE)
+    return (coordsAgree & alphaAgrees)
 }
 
 #' @rdname shade
@@ -244,6 +285,8 @@ all.equal.shade <- function (target, current, hexonly = FALSE, ...)
         all.equal(as.character(target), as.character(current), ...)
     else if (length(target) != length(current))
         paste0("Lengths do not match (", length(target), " and ", length(current), ")")
+    else if (!all(.alpha(target,allowNull=FALSE) == .alpha(current,allowNull=FALSE)))
+        paste0("Alpha values do not match (mean absolute difference is ", signif(mean(abs(.alpha(target,allowNull=FALSE) - .alpha(current,allowNull=FALSE))),4), ")")
     else
     {
         target <- warp(target, space(current))
@@ -359,6 +402,7 @@ warp <- function (x, space)
         return (x)
     
     coords <- convertColor(attr(x,"coords"), .converters[[sourceSpace]], .converters[[targetSpace]])
+    alpha <- .alpha(x)
     
-    return (structure(.toHex(coords,targetSpace), dim=dim(x), space=space, coords=coords, class="shade"))
+    return (structure(.toHex(coords,targetSpace,alpha), dim=dim(x), space=space, coords=coords, alpha=alpha, class="shade"))
 }

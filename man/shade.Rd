@@ -25,7 +25,7 @@ shade(x, ...)
 
 \method{shade}{color}(x, ...)
 
-\method{shade}{matrix}(x, space = "sRGB", ...)
+\method{shade}{matrix}(x, space = "sRGB", alpha = NULL, ...)
 
 \method{shade}{character}(x, ...)
 
@@ -57,6 +57,9 @@ colours in any acceptable form.}
 
 \item{space}{For a matrix, the space in which coordinates are being
 provided.}
+
+\item{alpha}{For a matrix, an associated vector of opacity values between 0
+and 1, if required.}
 
 \item{i}{An index vector.}
 
