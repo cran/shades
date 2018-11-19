@@ -26,9 +26,9 @@
 #' in the specified space.
 #' 
 #' @param shades One or more colours, in any suitable form (see
-#'   \code{\link{shade}}).
+#'   \code{\link{shade}}), or a palette function or scale.
 #' @param space The space in which to take the complement.
-#' @return New colours of class \code{"shade"}.
+#' @return New colours of class \code{"shade"}, or a new palette function.
 #' 
 #' @examples
 #' complement("cyan")
@@ -37,15 +37,27 @@
 #' @export
 complement <- function (shades, space = NULL)
 {
-    if (is.null(space))
-        space <- space(shades)
-    
-    if (tolower(space) == "hsv")
-        hue(shades, delta(180))
+    if (is.function(shades))
+        function (...) complement(shades(...), space)
+    else if (inherits(shades, "Scale"))
+    {
+        ggplot2::ggproto(NULL, shades, palette=function(self,...) {
+            colours <- ggplot2::ggproto_parent(shades, self)$palette(...)
+            complement(colours, space)
+        })
+    }
     else
     {
-        white <- warp("white", space=space)
-        .mix(white, shades, "-", space=space)
+        if (is.null(space))
+            space <- space(shades)
+    
+        if (tolower(space) == "hsv")
+            hue(shades, delta(180))
+        else
+        {
+            white <- warp("white", space=space)
+            .mix(white, shades, "-", space=space)
+        }
     }
 }
 
@@ -56,12 +68,13 @@ complement <- function (shades, space = NULL)
 #' \code{\%.)\%} is an alternative for \code{addmix}, and \code{\%_/\%} for
 #' \code{submix}, with the mixing amount being fixed to 1 in these cases.
 #' 
-#' @param base,X A vector of base colours.
+#' @param base,X A vector of base colours, or a palette function or scale.
 #' @param mixer,Y A vector of colours to mix in.
 #' @param amount The amount of each colour to mix in, relative to the amount
 #'   of the base. This will be recycled to the length of \code{mixer}.
 #' @param space A string giving the space in which to perform the mixing, or
 #'   \code{NULL}. In the latter case, the space of \code{base} will be used.
+#' @return New colours of class \code{"shade"}, or a new palette function.
 #' 
 #' @examples
 #' addmix(c("red","green","blue"), "red")
@@ -71,26 +84,46 @@ complement <- function (shades, space = NULL)
 #' @export
 addmix <- function (base, mixer, amount = 1, space = NULL)
 {
-    .mix(base, mixer, "+", amount, space)
+    if (is.function(base))
+        function (...) addmix(base(...), mixer, amount, space)
+    else if (inherits(base, "Scale"))
+    {
+        ggplot2::ggproto(NULL, base, palette=function(self,...) {
+            colours <- ggplot2::ggproto_parent(base, self)$palette(...)
+            addmix(colours, mixer, amount, space)
+        })
+    }
+    else
+        .mix(base, mixer, "+", amount, space)
 }
 
 #' @rdname mixtures
 #' @export
 submix <- function (base, mixer, amount = 1, space = NULL)
 {
-    complement(.mix(complement(base,space), complement(mixer,space), "+", amount, space))
+    if (is.function(base))
+        function (...) submix(base(...), mixer, amount, space)
+    else if (inherits(base, "Scale"))
+    {
+        ggplot2::ggproto(NULL, base, palette=function(self,...) {
+            colours <- ggplot2::ggproto_parent(base, self)$palette(...)
+            submix(colours, mixer, amount, space)
+        })
+    }
+    else
+        complement(.mix(complement(base,space), complement(mixer,space), "+", amount, space))
 }
 
 #' @rdname mixtures
 #' @export
 "%.)%" <- function (X, Y)
 {
-    .mix(X, Y, "+")
+    addmix(X, Y)
 }
 
 #' @rdname mixtures
 #' @export
 "%_/%" <- function (X, Y)
 {
-    complement(.mix(complement(X), complement(Y), "+"))
+    submix(X, Y)
 }
