@@ -5,6 +5,7 @@
 # Standard and additional colour space converters
 .converters <- list(rgb="sRGB", srgb="sRGB", xyz="XYZ", "apple rgb"="Apple RGB", "cie rgb"="CIE RGB", lab="Lab", luv="Luv")
 
+# Since R 3.6.0, colorConverter() has a "vectorized" argument that allows converters to indicate that they can handle multiple colours at once. For now we don't use that, for backwards compatibility
 .converters$hsv <- colorConverter(
     toXYZ = function (hsv, ...) {
         c <- hsv[2] * hsv[3]            # chroma
@@ -48,14 +49,17 @@
 .toHex <- function (coords, space, alpha = NULL)
 {
     space <- tolower(space)
+    missing <- apply(coords, 1, anyNA)
     
-    if (!identical(.converters[[space]], "sRGB"))
-        coords <- convertColor(coords, .converters[[space]], "sRGB")
+    if (any(!missing) && !identical(.converters[[space]], "sRGB"))
+        coords[!missing,] <- convertColor(coords[!missing,,drop=FALSE], .converters[[space]], "sRGB")
     
+    result <- rep(NA_character_, nrow(coords))
     if (is.null(alpha) || all(alpha == 1))
-        return (rgb(coords[,1], coords[,2], coords[,3], maxColorValue=1))
+        result[!missing] <- rgb(coords[!missing,1], coords[!missing,2], coords[!missing,3], maxColorValue=1)
     else
-        return (rgb(coords[,1], coords[,2], coords[,3], pmax(0,pmin(1,alpha)), maxColorValue=1))
+        result[!missing] <- rgb(coords[!missing,1], coords[!missing,2], coords[!missing,3], pmax(0,pmin(1,alpha[!missing])), maxColorValue=1)
+    return (result)
 }
 
 .clip <- function (coords, space)
@@ -183,6 +187,7 @@ shade.character <- function (x, ...)
     if (length(x) == 0)
         stop("Colour vector must not be empty")
     coords <- structure(t(col2rgb(x)/255), dimnames=list(NULL,c("R","G","B")))
+    coords[is.na(x),] <- NA
     structure(x, space="sRGB", coords=coords, alpha=.alpha(x), class="shade")
 }
 
@@ -406,7 +411,10 @@ warp <- function (x, space)
     if (sourceSpace == targetSpace)
         return (x)
     
-    coords <- convertColor(attr(x,"coords"), .converters[[sourceSpace]], .converters[[targetSpace]])
+    coords <- attr(x, "coords")
+    missing <- apply(coords, 1, anyNA)
+    if (any(!missing))
+        coords[!missing,] <- convertColor(coords[!missing,,drop=FALSE], .converters[[sourceSpace]], .converters[[targetSpace]])
     alpha <- .alpha(x)
     
     return (structure(.toHex(coords,targetSpace,alpha), dim=dim(x), space=space, coords=coords, alpha=alpha, class="shade"))
